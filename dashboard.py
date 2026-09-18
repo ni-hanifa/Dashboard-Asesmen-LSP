@@ -281,8 +281,11 @@ st.subheader("Sebaran Asesor")
 col_sebaran_pt, col_sebaran_region = st.columns(2)
 
 with col_sebaran_pt:
-    st.markdown("**Jumlah Asesor per PT / Instansi**")
-    sebaran_pt = df_asesor['Instansi Tempat Bekerja'].value_counts().reset_index()
+    st.markdown("**Jumlah Asesor per PT / Instansi** _(sumber: DATA ASESOR)_")
+    # [BARU] Tampil semua 13 asesor per default, tapi ikut mengecil kalau
+    # filter PT di sidebar dipilih (nama sudah seragam jadi bisa langsung match).
+    df_asesor_pt_f = df_asesor[df_asesor['Instansi Tempat Bekerja'].isin(pilihan_pt)] if pilihan_pt else df_asesor
+    sebaran_pt = df_asesor_pt_f['Instansi Tempat Bekerja'].value_counts().reset_index()
     sebaran_pt.columns = ['Instansi Tempat Bekerja', 'Jumlah Asesor']
 
     if not sebaran_pt.empty:
@@ -298,7 +301,7 @@ with col_sebaran_pt:
         st.info("Data instansi asesor tidak tersedia.")
 
 with col_sebaran_region:
-    st.markdown("**Jumlah Asesor per Region**")
+    st.markdown("**Jumlah Asesor per Region** _(sumber: DATA ASESMEN)_")
     sebaran_region = df_asesmen[['ASESOR', 'Region']].dropna().drop_duplicates()
     sebaran_region = sebaran_region['Region'].value_counts().reset_index()
     sebaran_region.columns = ['Region', 'Jumlah Asesor']
@@ -373,7 +376,7 @@ st.markdown("---")
 # dan tahun berapa saja" untuk tiap tahap (ASESMEN, PENGAJUAN BLANKO,
 # TERBIT BLANKO, DELIVERY BLANKO)
 # ---------------------------------------------------------
-st.subheader("Detail Tahapan Sertifikasi per Asesor / Bulan / Tahun")
+st.subheader("Detail Tahapan: Siapa, Kapan, dan Statusnya")
 
 col_pilih_tahap, col_pilih_status = st.columns(2)
 with col_pilih_tahap:
