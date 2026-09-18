@@ -34,9 +34,49 @@ def load_data():
     }
     df_asesmen['ASESOR'] = df_asesmen['ASESOR'].replace(koreksi_nama)
 
-    return df_asesmen, df_asesor
+    # ------------------------------------------------------------------
+    # [POIN B] Parser untuk sheet "Monitoring asesmen asesor" (target resmi).
+    # Sheet ini punya header bertingkat (baris NAMA/PT/BULAN, lalu TGT/ACT
+    # per bulan), jadi dibaca tanpa header (header=None) lalu di-reshape:
+    #   - kolom 1  = NAMA, kolom 2 = PT
+    #   - kolom 3..26  = 12 bulan (JAN..DES), tiap bulan 2 kolom (TGT, ACT)
+    #   - kolom 27..30 = TOTAL TGT, TOTAL ACT, GAP, % ACH
+    #   - baris data dimulai dari baris ke-6 (index 5), dan ada baris
+    #     ringkasan "TOTAL" di akhir yang harus dibuang supaya tidak ikut
+    #     dihitung sebagai satu asesor.
+    # ------------------------------------------------------------------
+    df_target_raw = pd.read_excel(file_path, sheet_name='Monitoring asesmen asesor', header=None)
+    data_rows = df_target_raw.iloc[5:].reset_index(drop=True)
+    data_rows = data_rows[data_rows[1].notna()]
+    data_rows = data_rows[data_rows[1].astype(str).str.strip().str.upper() != 'TOTAL']
 
-df_asesmen, df_asesor = load_data()
+    # Rekap TOTAL TGT/ACT/GAP/%ACH per asesor (sumber untuk chart "Capaian Target per Asesor")
+    df_target_asesor = pd.DataFrame({
+        'ASESOR': data_rows[1],
+        'PT': data_rows[2],
+        'TOTAL_TGT': pd.to_numeric(data_rows[27], errors='coerce').fillna(0),
+        'TOTAL_ACT': pd.to_numeric(data_rows[28], errors='coerce').fillna(0),
+        'GAP': pd.to_numeric(data_rows[29], errors='coerce').fillna(0),
+        'PCT_ACH': pd.to_numeric(data_rows[30], errors='coerce').fillna(0),
+    }).reset_index(drop=True)
+
+    # Rekap TGT/ACT per bulan (semua asesor) - sumber untuk chart "Target vs Aktualisasi"
+    bulan_order = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGT', 'SEP', 'OKT', 'NOV', 'DES']
+    bulanan_records = []
+    for i, bulan in enumerate(bulan_order):
+        col_tgt = 3 + i * 2
+        col_act = 4 + i * 2
+        bulanan_records.append(pd.DataFrame({
+            'ASESOR': data_rows[1],
+            'BULAN': bulan,
+            'TGT': pd.to_numeric(data_rows[col_tgt], errors='coerce').fillna(0),
+            'ACT': pd.to_numeric(data_rows[col_act], errors='coerce').fillna(0),
+        }))
+    df_target_bulanan = pd.concat(bulanan_records, ignore_index=True)
+
+    return df_asesmen, df_asesor, df_target_asesor, df_target_bulanan
+
+df_asesmen, df_asesor, df_target_asesor, df_target_bulanan = load_data()
 
 # ==========================================
 # 3. SIDEBAR (FILTER)
@@ -146,7 +186,15 @@ st.caption("Catatan: sheet DATA ASESOR tidak memiliki kolom Region (KALTENG 1, K
 st.markdown("---")
 
 # ---------------------------------------------------------
-# GRAFIK 1 & 2: TAHAPAN BLANKO & CAPAIAN TARGET PER ASESOR (DONE vs NOT DONE)
+# GRAFIK 1 & 2: TAHAPAN BLANKO & CAPAIAN TARGET PER ASESOR
+# [POIN B + C] Grafik "Capaian Target per Asesor" sekarang memakai TGT & ACT
+# resmi dari sheet "Monitoring asesmen asesor" (bukan hitung ulang DONE vs
+# NOT DONE dari DATA ASESMEN), sesuai saran: digabung jadi satu visual
+# "Capaian vs Target per Asesor" dengan angka target resmi.
+# Catatan: sheet ini tidak punya kolom Tahun/Region, dan format nama/PT-nya
+# sedikit berbeda dari DATA ASESMEN (mis. tanpa prefix "PT."), sehingga
+# chart ini TIDAK ikut ke-filter oleh sidebar (Tahun/PT/Asesor/Region) -
+# ditampilkan sesuai apa adanya dari sheet target resmi.
 # ---------------------------------------------------------
 col_funnel, col_capaian_asesor = st.columns(2)
 
@@ -164,26 +212,23 @@ with col_funnel:
     st.write("    ")
 
 with col_capaian_asesor:
-    # CHANGED: sebelumnya hanya menampilkan NOT DONE. Sekarang DONE vs NOT DONE
-    # per asesor supaya terlihat rasio capaian terhadap target, bukan cuma tunggakan.
-    st.subheader("Capaian Target per Asesor (DONE vs NOT DONE)")
+    st.subheader("Capaian Target per Asesor (TGT vs ACT resmi)")
 
-    capaian_asesor = df_filtered.groupby(['ASESOR', 'ASESMEN'])['No'].count().reset_index()
-    capaian_asesor.columns = ['Nama Asesor', 'Status', 'Jumlah']
+    capaian_asesor_top = df_target_asesor.sort_values('TOTAL_TGT', ascending=False).head(top_n)
+    capaian_asesor_long = capaian_asesor_top.melt(
+        id_vars=['ASESOR'], value_vars=['TOTAL_TGT', 'TOTAL_ACT'],
+        var_name='Status', value_name='Jumlah'
+    )
+    capaian_asesor_long['Status'] = capaian_asesor_long['Status'].map({'TOTAL_TGT': 'TARGET', 'TOTAL_ACT': 'AKTUAL'})
 
-    # urutkan asesor berdasarkan total target (DONE + NOT DONE), ambil top_n
-    total_per_asesor = capaian_asesor.groupby('Nama Asesor')['Jumlah'].sum().sort_values(ascending=False)
-    top_asesor_list = total_per_asesor.head(top_n).index.tolist()
-    capaian_asesor_top = capaian_asesor[capaian_asesor['Nama Asesor'].isin(top_asesor_list)]
-
-    if not capaian_asesor_top.empty:
+    if not capaian_asesor_long.empty:
         fig_capaian_asesor = px.bar(
-            capaian_asesor_top, x='Jumlah', y='Nama Asesor', color='Status',
-            orientation='h', text='Jumlah',
-            color_discrete_map={'DONE': '#2ecc71', 'NOT DONE': '#e74c3c'}
+            capaian_asesor_long, x='Jumlah', y='ASESOR', color='Status',
+            orientation='h', text='Jumlah', barmode='group',
+            color_discrete_map={'TARGET': '#f39c12', 'AKTUAL': '#2ecc71'}
         )
         fig_capaian_asesor.update_layout(
-            barmode='stack', yaxis={'categoryorder': 'total ascending'},
+            yaxis={'categoryorder': 'total ascending'}, yaxis_title=None,
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         st.plotly_chart(fig_capaian_asesor, use_container_width=True)
@@ -217,7 +262,10 @@ bulan_map = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'Mei', 6: 'Jun',
              7: 'Jul', 8: 'Ags', 9: 'Sep', 10: 'Okt', 11: 'Nov', 12: 'Des'}
 
 if not df_drilldown.empty:
-    rekap_drilldown = df_drilldown.groupby(['ASESOR', 'TAHUN SERTIFIKASI', 'BULAN SERTIFIKASI'])['No'].count().reset_index()
+    # [POIN A - FIX BUG] ['No'].count() -> .size(): .count() mengabaikan baris
+    # dengan kolom "No" kosong (NaN), sehingga asesor dengan baris NOT DONE
+    # tanpa nomor urut jadi tidak terhitung. .size() menghitung semua baris.
+    rekap_drilldown = df_drilldown.groupby(['ASESOR', 'TAHUN SERTIFIKASI', 'BULAN SERTIFIKASI']).size().reset_index()
     rekap_drilldown.columns = ['Asesor', 'Tahun', 'Bulan', 'Jumlah']
     rekap_drilldown['Bulan'] = rekap_drilldown['Bulan'].map(bulan_map).fillna(rekap_drilldown['Bulan'])
     rekap_drilldown = rekap_drilldown.sort_values(['Tahun', 'Jumlah'], ascending=[True, False])
@@ -231,20 +279,24 @@ st.markdown("---")
 
 # ---------------------------------------------------------
 # GRAFIK 3: TARGET VS AKTUALISASI 2026
+# [POIN B + C] TGT & ACT sekarang diambil dari sheet "Monitoring asesmen
+# asesor" (target resmi, dijumlah semua asesor per bulan), bukan lagi
+# row-count DATA ASESMEN (yang sebelumnya "target"-nya cuma jumlah baris
+# tercatat, bukan target resmi LSP).
 # ---------------------------------------------------------
-st.subheader("Target vs Aktualisasi (Khusus Data 2026)")
+st.subheader("Target vs Aktualisasi (Target Resmi per Bulan)")
 
-df_2026 = df_filtered[df_filtered['TAHUN SERTIFIKASI'] == 2026]
-target_per_bulan = df_2026.groupby('BULAN SERTIFIKASI')['No'].count().reindex(range(1, 13), fill_value=0)
-aktual_per_bulan = df_2026[df_2026['ASESMEN'] == 'DONE'].groupby('BULAN SERTIFIKASI')['No'].count().reindex(range(1, 13), fill_value=0)
+bulan_order = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGT', 'SEP', 'OKT', 'NOV', 'DES']
+target_bulanan_agg = df_target_bulanan.groupby('BULAN')[['TGT', 'ACT']].sum().reindex(bulan_order, fill_value=0)
 bulan_label = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des']
 
 fig_target_aktual = go.Figure()
-fig_target_aktual.add_trace(go.Bar(x=bulan_label, y=aktual_per_bulan.values, name='Aktualisasi (DONE)', marker_color='#2ecc71'))
-fig_target_aktual.add_trace(go.Scatter(x=bulan_label, y=target_per_bulan.values, name='Target Keseluruhan', mode='lines+markers', line=dict(color='orange', width=3, dash='solid')))
+fig_target_aktual.add_trace(go.Bar(x=bulan_label, y=target_bulanan_agg['ACT'].values, name='Aktualisasi (ACT)', marker_color='#2ecc71'))
+fig_target_aktual.add_trace(go.Scatter(x=bulan_label, y=target_bulanan_agg['TGT'].values, name='Target Resmi (TGT)', mode='lines+markers', line=dict(color='orange', width=3, dash='solid')))
 
 fig_target_aktual.update_layout(xaxis_title="Bulan", yaxis_title="Jumlah Asesi", barmode='group', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 st.plotly_chart(fig_target_aktual, use_container_width=True)
+st.caption("Sumber: sheet \"Monitoring asesmen asesor\" (kolom TGT/ACT resmi per asesor per bulan), dijumlahkan lintas semua asesor. Chart ini belum bisa mengikuti filter sidebar karena sheet target tidak memiliki kolom Tahun/Region.")
 st.write("    ")
 
 st.markdown("---")
@@ -271,7 +323,8 @@ with col_pie:
 with col_line:
     st.subheader("Tren Sertifikasi Tahunan")
     df_done = df_filtered[df_filtered['ASESMEN'] == 'DONE']
-    tren_tahunan = df_done.groupby('TAHUN SERTIFIKASI')['No'].count().reset_index()
+    # [POIN A - FIX BUG] ['No'].count() -> .size()
+    tren_tahunan = df_done.groupby('TAHUN SERTIFIKASI').size().reset_index()
     tren_tahunan.columns = ['Tahun', 'Jumlah Asesi (Selesai)']
 
     if not tren_tahunan.empty:
@@ -318,7 +371,8 @@ with col_asesor:
         top_asesor_rank = df_done['ASESOR'].value_counts().head(top_n).index.tolist()
         df_top_asesor = df_done[df_done['ASESOR'].isin(top_asesor_rank)]
 
-        asesor_yearly = df_top_asesor.groupby(['ASESOR', 'TAHUN SERTIFIKASI'])['No'].count().reset_index()
+        # [POIN A - FIX BUG] ['No'].count() -> .size()
+        asesor_yearly = df_top_asesor.groupby(['ASESOR', 'TAHUN SERTIFIKASI']).size().reset_index()
         asesor_yearly.columns = ['Nama Asesor', 'Tahun', 'Jumlah Asesi']
         asesor_yearly['Tahun'] = asesor_yearly['Tahun'].astype(str)
 
