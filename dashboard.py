@@ -361,5 +361,8 @@ st.markdown("---")
 # TABEL MASTER: BIODATA ASESOR
 # ---------------------------------------------------------
 st.subheader("Data Master & Biodata Asesor")
-st.dataframe(df_asesor, use_container_width=True, hide_index=True)
+# NIK tidak ditampilkan di dashboard (data sensitif), meski tetap ada di file Excel sumber.
+kolom_sensitif = [kolom for kolom in df_asesor.columns if 'NIK' in kolom.upper()]
+df_asesor_tampil = df_asesor.drop(columns=kolom_sensitif, errors='ignore')
+st.dataframe(df_asesor_tampil, use_container_width=True, hide_index=True)
 st.write("    ")
