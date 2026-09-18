@@ -266,7 +266,9 @@ st.markdown("---")
 # Requirement no. 2: "sebaran asesor per PT, sebaran asesor per Region"
 # [DIPERBARUI]
 #  - "per PT" tetap dari DATA ASESOR (satu-satunya sheet berisi biodata &
-#    instansi asesor), sekarang pakai nama PT panjang yang sudah seragam.
+#    instansi asesor), pakai nama PT panjang yang sudah seragam, dan SEKARANG
+#    ikut mengecil kalau filter PT di sidebar dipilih (default tetap tampil
+#    semua 13 asesor terdaftar kalau filter PT kosong).
 #  - "per Region" SEBELUMNYA salah pakai kolom Provinsi (alamat domisili
 #    asesor) sebagai pengganti Region, padahal Region (KALTENG 1, KALTENG 2,
 #    KALTIM 1, KALTIM 2, SUMATERA) itu wilayah kerja/penugasan dan kolom itu
@@ -281,7 +283,7 @@ st.subheader("Sebaran Asesor")
 col_sebaran_pt, col_sebaran_region = st.columns(2)
 
 with col_sebaran_pt:
-    st.markdown("**Jumlah Asesor per PT / Instansi** _(sumber: DATA ASESOR)_")
+    st.markdown("**Jumlah Asesor per PT / Instansi**")
     # [BARU] Tampil semua 13 asesor per default, tapi ikut mengecil kalau
     # filter PT di sidebar dipilih (nama sudah seragam jadi bisa langsung match).
     df_asesor_pt_f = df_asesor[df_asesor['Instansi Tempat Bekerja'].isin(pilihan_pt)] if pilihan_pt else df_asesor
@@ -298,10 +300,10 @@ with col_sebaran_pt:
         fig_sebaran_pt.update_layout(showlegend=False, yaxis_title=None)
         st.plotly_chart(fig_sebaran_pt, use_container_width=True)
     else:
-        st.info("Data instansi asesor tidak tersedia.")
+        st.info("Tidak ada asesor untuk PT yang dipilih.")
 
 with col_sebaran_region:
-    st.markdown("**Jumlah Asesor per Region** _(sumber: DATA ASESMEN)_")
+    st.markdown("**Jumlah Asesor per Region**")
     sebaran_region = df_asesmen[['ASESOR', 'Region']].dropna().drop_duplicates()
     sebaran_region = sebaran_region['Region'].value_counts().reset_index()
     sebaran_region.columns = ['Region', 'Jumlah Asesor']
@@ -376,7 +378,7 @@ st.markdown("---")
 # dan tahun berapa saja" untuk tiap tahap (ASESMEN, PENGAJUAN BLANKO,
 # TERBIT BLANKO, DELIVERY BLANKO)
 # ---------------------------------------------------------
-st.subheader("Detail Tahapan: Siapa, Kapan, dan Statusnya")
+st.subheader("Detail Tahapan Sertifikasi per Asesor / Bulan / Tahun")
 
 col_pilih_tahap, col_pilih_status = st.columns(2)
 with col_pilih_tahap:
