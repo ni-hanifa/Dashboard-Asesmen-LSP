@@ -289,7 +289,8 @@ with col_sebaran_pt:
         fig_sebaran_pt = px.bar(
             sebaran_pt.sort_values('Jumlah Asesor', ascending=True),
             x='Jumlah Asesor', y='Instansi Tempat Bekerja', orientation='h',
-            text='Jumlah Asesor', color='Jumlah Asesor', color_continuous_scale='Purples'
+            text='Jumlah Asesor', color='Jumlah Asesor',
+            color_continuous_scale=['#C9B8F5', '#5B21B6']  # ungu muda -> ungu tua (tidak mulai dari putih)
         )
         fig_sebaran_pt.update_layout(showlegend=False, yaxis_title=None)
         st.plotly_chart(fig_sebaran_pt, use_container_width=True)
