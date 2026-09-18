@@ -36,21 +36,13 @@ def load_data():
 
     # ------------------------------------------------------------------
     # [POIN B] Parser untuk sheet "Monitoring asesmen asesor" (target resmi).
-    # Sheet ini punya header bertingkat (baris NAMA/PT/BULAN, lalu TGT/ACT
-    # per bulan), jadi dibaca tanpa header (header=None) lalu di-reshape:
-    #   - kolom 1  = NAMA, kolom 2 = PT
-    #   - kolom 3..26  = 12 bulan (JAN..DES), tiap bulan 2 kolom (TGT, ACT)
-    #   - kolom 27..30 = TOTAL TGT, TOTAL ACT, GAP, % ACH
-    #   - baris data dimulai dari baris ke-6 (index 5), dan ada baris
-    #     ringkasan "TOTAL" di akhir yang harus dibuang supaya tidak ikut
-    #     dihitung sebagai satu asesor.
     # ------------------------------------------------------------------
     df_target_raw = pd.read_excel(file_path, sheet_name='Monitoring asesmen asesor', header=None)
     data_rows = df_target_raw.iloc[5:].reset_index(drop=True)
     data_rows = data_rows[data_rows[1].notna()]
     data_rows = data_rows[data_rows[1].astype(str).str.strip().str.upper() != 'TOTAL']
 
-    # Rekap TOTAL TGT/ACT/GAP/%ACH per asesor (sumber untuk chart "Capaian Target per Asesor")
+    # Rekap TOTAL TGT/ACT/GAP/%ACH per asesor
     df_target_asesor = pd.DataFrame({
         'ASESOR': data_rows[1],
         'PT': data_rows[2],
@@ -60,7 +52,7 @@ def load_data():
         'PCT_ACH': pd.to_numeric(data_rows[30], errors='coerce').fillna(0),
     }).reset_index(drop=True)
 
-    # Rekap TGT/ACT per bulan (semua asesor) - sumber untuk chart "Target vs Aktualisasi"
+    # Rekap TGT/ACT per bulan (semua asesor)
     bulan_order = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGT', 'SEP', 'OKT', 'NOV', 'DES']
     bulanan_records = []
     for i, bulan in enumerate(bulan_order):
@@ -105,9 +97,10 @@ st.sidebar.markdown("<br>", unsafe_allow_html=True)
 st.sidebar.button("clear all", on_click=hapus_semua_filter, type="tertiary", use_container_width=True)
 
 # ==========================================
-# 4. LOGIKA FILTERING
+# 4. LOGIKA FILTERING (DIPERBAIKI AGAR SINKRON KE SEMUA GRAFIK)
 # ==========================================
 df_filtered = df_asesmen.copy()
+is_filtered = bool(pilihan_tahun or pilihan_pt or pilihan_asesor or pilihan_region)
 
 if pilihan_tahun:
     df_filtered = df_filtered[df_filtered['TAHUN SERTIFIKASI'].isin(pilihan_tahun)]
@@ -117,6 +110,17 @@ if pilihan_asesor:
     df_filtered = df_filtered[df_filtered['ASESOR'].isin(pilihan_asesor)]
 if pilihan_region:
     df_filtered = df_filtered[df_filtered['Region'].isin(pilihan_region)]
+
+# Sinkronkan filter ke Data Asesor & Target berdasarkan Asesor yang valid di df_filtered
+if is_filtered:
+    valid_asesors = df_filtered['ASESOR'].unique()
+    df_asesor_filtered = df_asesor[df_asesor['Nama Lengkap'].isin(valid_asesors)].copy()
+    df_target_asesor_filtered = df_target_asesor[df_target_asesor['ASESOR'].isin(valid_asesors)].copy()
+    df_target_bulanan_filtered = df_target_bulanan[df_target_bulanan['ASESOR'].isin(valid_asesors)].copy()
+else:
+    df_asesor_filtered = df_asesor.copy()
+    df_target_asesor_filtered = df_target_asesor.copy()
+    df_target_bulanan_filtered = df_target_bulanan.copy()
 
 # ==========================================
 # 5. KONTEN UTAMA & SUMMARY METRICS
@@ -134,22 +138,20 @@ with col3:
 with col4:
     st.metric(label="Total Asesor Aktif", value=f"{df_filtered['ASESOR'].nunique():,}")
 with col5:
-    # NEW: total asesor terdaftar (dari master data, bukan hanya yg muncul di data asesmen terfilter)
-    st.metric(label="Total Asesor Terdaftar", value=f"{df_asesor['Nama Lengkap'].nunique():,}")
+    st.metric(label="Total Asesor Terdaftar", value=f"{df_asesor_filtered['Nama Lengkap'].nunique():,}")
 
 st.write("    ")
 st.markdown("---")
 
 # ---------------------------------------------------------
-# NEW SECTION: SEBARAN ASESOR PER PT & PER REGION (dari DATA ASESOR)
-# Requirement no. 2: "sebaran asesor per PT, sebaran asesor per Region"
+# SEBARAN ASESOR PER PT & PER REGION
 # ---------------------------------------------------------
 st.subheader("Sebaran Asesor (Berdasarkan Data Master Asesor)")
 col_sebaran_pt, col_sebaran_region = st.columns(2)
 
 with col_sebaran_pt:
     st.markdown("**Jumlah Asesor per PT / Instansi**")
-    sebaran_pt = df_asesor['Instansi Tempat Bekerja'].value_counts().reset_index()
+    sebaran_pt = df_asesor_filtered['Instansi Tempat Bekerja'].value_counts().reset_index()
     sebaran_pt.columns = ['Instansi Tempat Bekerja', 'Jumlah Asesor']
 
     if not sebaran_pt.empty:
@@ -165,9 +167,7 @@ with col_sebaran_pt:
 
 with col_sebaran_region:
     st.markdown("**Jumlah Asesor per Provinsi**")
-    # df_asesor tidak punya kolom "Region" (KALTENG 1, dst) seperti df_asesmen,
-    # jadi dipakai kolom Provinsi sebagai proksi sebaran wilayah asesor.
-    sebaran_prov = df_asesor['Provinsi'].value_counts().reset_index()
+    sebaran_prov = df_asesor_filtered['Provinsi'].value_counts().reset_index()
     sebaran_prov.columns = ['Provinsi', 'Jumlah Asesor']
 
     if not sebaran_prov.empty:
@@ -187,14 +187,6 @@ st.markdown("---")
 
 # ---------------------------------------------------------
 # GRAFIK 1 & 2: TAHAPAN BLANKO & CAPAIAN TARGET PER ASESOR
-# [POIN B + C] Grafik "Capaian Target per Asesor" sekarang memakai TGT & ACT
-# resmi dari sheet "Monitoring asesmen asesor" (bukan hitung ulang DONE vs
-# NOT DONE dari DATA ASESMEN), sesuai saran: digabung jadi satu visual
-# "Capaian vs Target per Asesor" dengan angka target resmi.
-# Catatan: sheet ini tidak punya kolom Tahun/Region, dan format nama/PT-nya
-# sedikit berbeda dari DATA ASESMEN (mis. tanpa prefix "PT."), sehingga
-# chart ini TIDAK ikut ke-filter oleh sidebar (Tahun/PT/Asesor/Region) -
-# ditampilkan sesuai apa adanya dari sheet target resmi.
 # ---------------------------------------------------------
 col_funnel, col_capaian_asesor = st.columns(2)
 
@@ -214,7 +206,7 @@ with col_funnel:
 with col_capaian_asesor:
     st.subheader("Capaian Target per Asesor (TGT vs ACT resmi)")
 
-    capaian_asesor_top = df_target_asesor.sort_values('TOTAL_TGT', ascending=False).head(top_n)
+    capaian_asesor_top = df_target_asesor_filtered.sort_values('TOTAL_TGT', ascending=False).head(top_n)
     capaian_asesor_long = capaian_asesor_top.melt(
         id_vars=['ASESOR'], value_vars=['TOTAL_TGT', 'TOTAL_ACT'],
         var_name='Status', value_name='Jumlah'
@@ -238,10 +230,7 @@ with col_capaian_asesor:
 st.markdown("---")
 
 # ---------------------------------------------------------
-# NEW SECTION: DRILL-DOWN TAHAPAN PER ASESOR / BULAN / TAHUN
-# Requirement no. 3: "berapa jumlahnya, siapa saja asesornya, bulan berapa saja
-# dan tahun berapa saja" untuk tiap tahap (ASESMEN, PENGAJUAN BLANKO,
-# TERBIT BLANKO, DELIVERY BLANKO)
+# DRILL-DOWN TAHAPAN PER ASESOR / BULAN / TAHUN
 # ---------------------------------------------------------
 st.subheader("Detail Tahapan: Siapa, Kapan, dan Statusnya")
 
@@ -262,9 +251,6 @@ bulan_map = {1: 'Jan', 2: 'Feb', 3: 'Mar', 4: 'Apr', 5: 'Mei', 6: 'Jun',
              7: 'Jul', 8: 'Ags', 9: 'Sep', 10: 'Okt', 11: 'Nov', 12: 'Des'}
 
 if not df_drilldown.empty:
-    # [POIN A - FIX BUG] ['No'].count() -> .size(): .count() mengabaikan baris
-    # dengan kolom "No" kosong (NaN), sehingga asesor dengan baris NOT DONE
-    # tanpa nomor urut jadi tidak terhitung. .size() menghitung semua baris.
     rekap_drilldown = df_drilldown.groupby(['ASESOR', 'TAHUN SERTIFIKASI', 'BULAN SERTIFIKASI']).size().reset_index()
     rekap_drilldown.columns = ['Asesor', 'Tahun', 'Bulan', 'Jumlah']
     rekap_drilldown['Bulan'] = rekap_drilldown['Bulan'].map(bulan_map).fillna(rekap_drilldown['Bulan'])
@@ -279,15 +265,11 @@ st.markdown("---")
 
 # ---------------------------------------------------------
 # GRAFIK 3: TARGET VS AKTUALISASI 2026
-# [POIN B + C] TGT & ACT sekarang diambil dari sheet "Monitoring asesmen
-# asesor" (target resmi, dijumlah semua asesor per bulan), bukan lagi
-# row-count DATA ASESMEN (yang sebelumnya "target"-nya cuma jumlah baris
-# tercatat, bukan target resmi LSP).
 # ---------------------------------------------------------
 st.subheader("Target vs Aktualisasi (Target Resmi per Bulan)")
 
 bulan_order = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGT', 'SEP', 'OKT', 'NOV', 'DES']
-target_bulanan_agg = df_target_bulanan.groupby('BULAN')[['TGT', 'ACT']].sum().reindex(bulan_order, fill_value=0)
+target_bulanan_agg = df_target_bulanan_filtered.groupby('BULAN')[['TGT', 'ACT']].sum().reindex(bulan_order, fill_value=0)
 bulan_label = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des']
 
 fig_target_aktual = go.Figure()
@@ -296,7 +278,6 @@ fig_target_aktual.add_trace(go.Scatter(x=bulan_label, y=target_bulanan_agg['TGT'
 
 fig_target_aktual.update_layout(xaxis_title="Bulan", yaxis_title="Jumlah Asesi", barmode='group', legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
 st.plotly_chart(fig_target_aktual, use_container_width=True)
-st.caption("Sumber: sheet \"Monitoring asesmen asesor\" (kolom TGT/ACT resmi per asesor per bulan), dijumlahkan lintas semua asesor. Chart ini belum bisa mengikuti filter sidebar karena sheet target tidak memiliki kolom Tahun/Region.")
 st.write("    ")
 
 st.markdown("---")
@@ -323,7 +304,6 @@ with col_pie:
 with col_line:
     st.subheader("Tren Sertifikasi Tahunan")
     df_done = df_filtered[df_filtered['ASESMEN'] == 'DONE']
-    # [POIN A - FIX BUG] ['No'].count() -> .size()
     tren_tahunan = df_done.groupby('TAHUN SERTIFIKASI').size().reset_index()
     tren_tahunan.columns = ['Tahun', 'Jumlah Asesi (Selesai)']
 
@@ -371,7 +351,6 @@ with col_asesor:
         top_asesor_rank = df_done['ASESOR'].value_counts().head(top_n).index.tolist()
         df_top_asesor = df_done[df_done['ASESOR'].isin(top_asesor_rank)]
 
-        # [POIN A - FIX BUG] ['No'].count() -> .size()
         asesor_yearly = df_top_asesor.groupby(['ASESOR', 'TAHUN SERTIFIKASI']).size().reset_index()
         asesor_yearly.columns = ['Nama Asesor', 'Tahun', 'Jumlah Asesi']
         asesor_yearly['Tahun'] = asesor_yearly['Tahun'].astype(str)
@@ -415,8 +394,7 @@ st.markdown("---")
 # TABEL MASTER: BIODATA ASESOR
 # ---------------------------------------------------------
 st.subheader("Data Master & Biodata Asesor")
-# NIK tidak ditampilkan di dashboard (data sensitif), meski tetap ada di file Excel sumber.
-kolom_sensitif = [kolom for kolom in df_asesor.columns if 'NIK' in kolom.upper()]
-df_asesor_tampil = df_asesor.drop(columns=kolom_sensitif, errors='ignore')
+kolom_sensitif = [kolom for kolom in df_asesor_filtered.columns if 'NIK' in kolom.upper()]
+df_asesor_tampil = df_asesor_filtered.drop(columns=kolom_sensitif, errors='ignore')
 st.dataframe(df_asesor_tampil, use_container_width=True, hide_index=True)
 st.write("    ")
