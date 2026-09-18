@@ -319,8 +319,7 @@ with col_sebaran_region:
     else:
         st.info("Data Region asesor tidak tersedia.")
 
-st.caption("Catatan: sebaran per Region dihitung dari pasangan Asesor-Region pada DATA ASESMEN (DATA ASESOR tidak memiliki kolom Region). Sejumlah asesor tercatat mengases di lebih dari satu Region, sehingga mereka dihitung di setiap Region tempat bertugas dan total lintas-Region bisa melebihi jumlah asesor unik.")
-
+st.caption(" ")
 st.markdown("---")
 
 # ---------------------------------------------------------
