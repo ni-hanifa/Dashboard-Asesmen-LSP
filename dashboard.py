@@ -281,7 +281,7 @@ st.subheader("Sebaran Asesor")
 col_sebaran_pt, col_sebaran_region = st.columns(2)
 
 with col_sebaran_pt:
-    st.markdown("**Jumlah Asesor per PT / Instansi** _(sumber: DATA ASESOR)_")
+    st.markdown("**Jumlah Asesor per PT / Instansi**")
     sebaran_pt = df_asesor['Instansi Tempat Bekerja'].value_counts().reset_index()
     sebaran_pt.columns = ['Instansi Tempat Bekerja', 'Jumlah Asesor']
 
@@ -298,7 +298,7 @@ with col_sebaran_pt:
         st.info("Data instansi asesor tidak tersedia.")
 
 with col_sebaran_region:
-    st.markdown("**Jumlah Asesor per Region** _(sumber: DATA ASESMEN)_")
+    st.markdown("**Jumlah Asesor per Region**")
     sebaran_region = df_asesmen[['ASESOR', 'Region']].dropna().drop_duplicates()
     sebaran_region = sebaran_region['Region'].value_counts().reset_index()
     sebaran_region.columns = ['Region', 'Jumlah Asesor']
@@ -373,7 +373,7 @@ st.markdown("---")
 # dan tahun berapa saja" untuk tiap tahap (ASESMEN, PENGAJUAN BLANKO,
 # TERBIT BLANKO, DELIVERY BLANKO)
 # ---------------------------------------------------------
-st.subheader("Detail Tahapan: Siapa, Kapan, dan Statusnya")
+st.subheader("Detail Tahapan Sertifikasi per Asesor / Bulan / Tahun")
 
 col_pilih_tahap, col_pilih_status = st.columns(2)
 with col_pilih_tahap:
